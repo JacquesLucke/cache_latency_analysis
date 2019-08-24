@@ -8,7 +8,7 @@
 #include <immintrin.h>
 #include <assert.h>
 
-#include "BLI_timeit.hpp"
+#include "timeit.hpp"
 
 static void find_indices__naive(
 	uint8_t * __restrict in_begin, 

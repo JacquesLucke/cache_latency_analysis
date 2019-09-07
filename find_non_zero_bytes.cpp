@@ -204,7 +204,6 @@ static void find_indices__optimized(
 			case 27:
 			case 28:
 			case 29:
-			case 30:
 			{
 				uint32_t index_end = index_offset + 32;
 				for (uint32_t index = index_offset; index < index_end; index++) {
@@ -214,22 +213,20 @@ static void find_indices__optimized(
 				}
 				break;
 			}
+			case 30:
 			case 31:
 			{
-				uint32_t inverted_mask = ~mask;
-				uint32_t zero_index = find_lowest_set_bit_index(inverted_mask) + index_offset;
-				uint32_t end_index = index_offset + 32;
-				for (uint32_t index = index_offset; index < zero_index; index++) {
-					*out_current = index;
-					out_current++;
-				}
-				for (uint32_t index = zero_index + 1; index < end_index; index++) {
-					*out_current = index;
-					out_current++;
+				uint32_t index_end = index_offset + 32;
+				for (uint32_t index = index_offset; index < index_end; index++) {
+					if (in_begin[index] != 0) {
+						*out_current = index;
+						out_current++;
+					}
 				}
 				break;
 			}
 			case 32:
+			{
 				__m256i index_offset_256 = _mm256_set1_epi32(index_offset);
 				__m256i part1 = _mm256_add_epi32(index_offset_256, _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
 				__m256i part2 = _mm256_add_epi32(index_offset_256, _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
@@ -241,6 +238,7 @@ static void find_indices__optimized(
 				_mm256_store_si256((__m256i*)out_current + 3, part4);
 				out_current += 32;
 				break;
+			}
 			}
 		}
 	}
@@ -309,7 +307,7 @@ static void run_test(const char* name, NonZeroFinder function, std::vector<uint8
 int main(int argc, char const* argv[])
 {
 	uint32_t total_size = 10'000'000;
-	uint32_t set_size = 7'000'000;
+	uint32_t set_size = 100;
 
 	std::cout << "Total size: " << total_size << "\n";
 

@@ -204,24 +204,14 @@ static void find_indices__optimized(
 			case 27:
 			case 28:
 			case 29:
+			case 30:
+			case 31:
 			{
 				uint32_t index_end = index_offset + 32;
 				for (uint32_t index = index_offset; index < index_end; index++) {
 					*out_current = index;
 					bool is_non_zero = in_begin[index] != 0;
 					out_current += is_non_zero;
-				}
-				break;
-			}
-			case 30:
-			case 31:
-			{
-				uint32_t index_end = index_offset + 32;
-				for (uint32_t index = index_offset; index < index_end; index++) {
-					if (in_begin[index] != 0) {
-						*out_current = index;
-						out_current++;
-					}
 				}
 				break;
 			}
@@ -307,7 +297,7 @@ static void run_test(const char* name, NonZeroFinder function, std::vector<uint8
 int main(int argc, char const* argv[])
 {
 	uint32_t total_size = 10'000'000;
-	uint32_t set_size = 100;
+	uint32_t set_size = 30'000'000;
 
 	std::cout << "Total size: " << total_size << "\n";
 

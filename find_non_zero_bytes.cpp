@@ -304,6 +304,7 @@ static void find_indices__optimized2(uint8_t *__restrict in_begin,
                 while (mask) {
                     *out_current = index;
                     out_current += mask & 1;
+                    index++;
                     mask >>= 1;
                 }
             }
@@ -340,10 +341,10 @@ static void find_indices__optimized2(uint8_t *__restrict in_begin,
                 _mm256_store_si256((__m256i *)out_current + 1, part2);
                 _mm256_store_si256((__m256i *)out_current + 2, part3);
                 _mm256_store_si256((__m256i *)out_current + 3, part4);
-                _mm256_store_si256((__m256i *)out_current + 5, part5);
-                _mm256_store_si256((__m256i *)out_current + 6, part6);
-                _mm256_store_si256((__m256i *)out_current + 7, part7);
-                _mm256_store_si256((__m256i *)out_current + 8, part8);
+                _mm256_store_si256((__m256i *)out_current + 4, part5);
+                _mm256_store_si256((__m256i *)out_current + 5, part6);
+                _mm256_store_si256((__m256i *)out_current + 6, part7);
+                _mm256_store_si256((__m256i *)out_current + 7, part8);
                 out_current += 64;
             }
         }

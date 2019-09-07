@@ -362,14 +362,11 @@ static void find_indices__optimized2(uint8_t *__restrict in_begin,
                 case 62:
                 case 63: {
                     uint32_t index = start_index;
-
-                    for (uint32_t i = 0; i < 64; i++) {
+                    while (mask) {
                         *out_current = index;
                         out_current += mask & 1;
-                        index++;
                         mask >>= 1;
                     }
-
                     break;
                 }
                 case 64: {

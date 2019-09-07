@@ -274,6 +274,15 @@ typedef void (*NonZeroFinder)(
 	uint32_t* __restrict out_begin,
 	uint32_t& out_amount);
 
+static void print_found(std::vector<uint32_t>& found, uint32_t amount_found) {
+	std::cout << "Found:\n  ";
+	for (uint32_t i = 0; i < amount_found; i++) {
+		uint32_t index = found[i];
+		std::cout << index << " ";
+	}
+	std::cout << '\n';
+}
+
 static void run_test(const char* name, NonZeroFinder function, std::vector<uint8_t>& array)
 {
 	std::vector<uint32_t> found(array.size());
@@ -284,35 +293,40 @@ static void run_test(const char* name, NonZeroFinder function, std::vector<uint8
 		function(array.data(), array.data() + array.size(), &found[0], amount_found);
 	}
 
+	//print_found(found, amount_found);
 	std::cout << "Found " << amount_found << " non-zeros.\n";
+}
 
-	// std::cout << "Found:\n  ";
-	// for (uint32_t i = 0; i < amount_found; i++) {
-	// 	uint32_t index = found[i];
-	// 	std::cout << index << " ";
-	// }
-	// std::cout << '\n';
+static std::vector<uint8_t> init_data(uint32_t total_size, uint32_t one_amount)
+{
+	assert(one_amount <= total_size);
+
+	std::vector<uint8_t> data(total_size);
+
+	std::random_device rd;
+	std::uniform_real_distribution<double> distribution(0, 1);
+	uint32_t remaining = one_amount;
+
+	for (uint32_t i = 0; i < total_size; i++) {
+		double probability = (double)remaining / (double)(total_size - i);
+		double random_value = distribution(rd);
+		if (random_value < probability) {
+			data[i] = 1;
+			remaining--;
+		}
+		else {
+			data[i] = 0;
+		}
+	}
+
+	return data;
 }
 
 int main(int argc, char const* argv[])
 {
-	uint32_t total_size = 10'000'000;
-	uint32_t set_size = 30'000'000;
+	auto array = init_data(10'000'000, 9'800'000);
 
-	std::cout << "Total size: " << total_size << "\n";
-
-	std::vector<uint8_t> array(total_size);
-	std::fill_n(array.begin(), array.size(), 0);
-
-	std::random_device rd;
-	std::uniform_int_distribution<uint32_t> distribution(0, total_size - 1);
-
-	for (uint32_t i = 0; i < set_size; i++) {
-		uint32_t index = distribution(rd);
-		array[index] = 1;
-	}
-
-	//std::fill_n(array.begin(), array.size(), 1);
+	std::cout << "Total size: " << array.size() << "\n";
 
 	run_test("naive", find_indices__naive, array);
 	run_test("branch free", find_indices__branch_free, array);

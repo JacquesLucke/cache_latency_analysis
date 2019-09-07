@@ -353,6 +353,118 @@ static void find_indices__optimized2(uint8_t *__restrict in_begin,
     out_amount = out_current - out_begin;
 }
 
+static void find_indices__optimized3(uint8_t *__restrict in_begin,
+                                     uint8_t *__restrict in_end,
+                                     uint32_t *__restrict out_begin,
+                                     uint32_t &out_amount)
+{
+    assert((in_end - in_begin) % 64 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros;
+    memset(&zeros, 0x00, sizeof(__m256i));
+
+    for (uint8_t *current = in_begin; current != in_end; current += 64) {
+        __m256i group1 = _mm256_loadu_si256((__m256i *)current);
+        __m256i group2 = _mm256_loadu_si256((__m256i *)current + 1);
+        __m256i compared1 = _mm256_cmpeq_epi8(group1, zeros);
+        __m256i compared2 = _mm256_cmpeq_epi8(group2, zeros);
+        uint32_t inverted_mask1 = _mm256_movemask_epi8(compared1);
+        uint32_t inverted_mask2 = _mm256_movemask_epi8(compared2);
+        uint64_t inverted_mask = ((uint64_t)inverted_mask2 << (uint64_t)32) |
+                                 inverted_mask1;
+        uint64_t mask = ~inverted_mask;
+        if (mask != 0) {
+            uint32_t set_bits = _mm_popcnt_u64(mask);
+            uint32_t start_index = current - in_begin;
+
+            if (set_bits < 16) {
+                if (set_bits == 1) {
+                    uint32_t index = find_lowest_set_bit_index(mask);
+                    *out_current = start_index + index;
+                    out_current++;
+                }
+                else if (set_bits == 2) {
+                    uint32_t index1 = find_lowest_set_bit_index(mask);
+                    uint32_t index2 = find_highest_set_bit_index(mask);
+                    *out_current = start_index + index1;
+                    *(out_current + 1) = start_index + index2;
+                    out_current += 2;
+                }
+                else {
+                    unsigned long index_offset;
+                    while (_BitScanForward64(&index_offset, mask)) {
+                        *out_current = start_index + index_offset;
+                        out_current++;
+                        mask &= ~((uint64_t)1 << index_offset);
+                    }
+                }
+            }
+            else if (set_bits < 64) {
+                uint32_t index = start_index;
+                while (mask) {
+                    *out_current = index;
+                    out_current += mask & 1;
+
+                    *out_current = index + 1;
+                    out_current += (mask & 2) >> 1;
+
+                    *out_current = index + 2;
+                    out_current += (mask & 4) >> 2;
+
+                    *out_current = index + 3;
+                    out_current += (mask & 8) >> 3;
+
+                    index += 4;
+                    mask >>= 4;
+                }
+            }
+            else {
+                __m256i index_offset_256 = _mm256_set1_epi32(start_index);
+
+                __m256i part1 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
+                __m256i part2 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
+                __m256i part3 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
+                __m256i part4 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
+
+                __m256i part5 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(39, 38, 37, 36, 35, 34, 33, 32));
+                __m256i part6 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(47, 46, 45, 44, 43, 42, 41, 40));
+                __m256i part7 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(55, 54, 53, 52, 51, 50, 49, 48));
+                __m256i part8 = _mm256_add_epi32(
+                    index_offset_256,
+                    _mm256_set_epi32(63, 62, 61, 60, 59, 58, 57, 56));
+
+                _mm256_store_si256((__m256i *)out_current, part1);
+                _mm256_store_si256((__m256i *)out_current + 1, part2);
+                _mm256_store_si256((__m256i *)out_current + 2, part3);
+                _mm256_store_si256((__m256i *)out_current + 3, part4);
+                _mm256_store_si256((__m256i *)out_current + 4, part5);
+                _mm256_store_si256((__m256i *)out_current + 5, part6);
+                _mm256_store_si256((__m256i *)out_current + 6, part7);
+                _mm256_store_si256((__m256i *)out_current + 7, part8);
+                out_current += 64;
+            }
+        }
+    }
+
+    out_amount = out_current - out_begin;
+}
+
 static void find_indices__grouped_32(uint8_t *__restrict in_begin,
                                      uint8_t *__restrict in_end,
                                      uint32_t *__restrict out_begin,
@@ -413,14 +525,14 @@ static FunctionStats run_test(const char *name,
                               NonZeroFinder function,
                               std::vector<uint8_t> &array)
 {
-    const uint32_t iteration_count = 300;
+    const uint32_t iteration_count = 100;
     const uint32_t cutoff = 20;
 
     std::vector<uint32_t> found(array.size());
     uint32_t amount_found = 0;
     std::vector<double> durations;
 
-    for (uint32_t iteration = 0; iteration < 100; iteration++) {
+    for (uint32_t iteration = 0; iteration < iteration_count; iteration++) {
         TimePoint start_time = Clock::now();
         function(array.data(),
                  array.data() + array.size(),
@@ -507,6 +619,7 @@ int main(int argc, char const *argv[])
         {find_indices__grouped_32, "grouped 32"},
         {find_indices__optimized, "optimized"},
         {find_indices__optimized2, "optimized 2"},
+        {find_indices__optimized3, "optimized 3"},
     };
 
     for (uint32_t set_amount : set_amounts) {

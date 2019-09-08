@@ -14,16 +14,17 @@
 #include <assert.h>
 #include <fstream>
 
-static uint32_t find_non_zero_indices__naive(uint8_t *__restrict in_begin,
-                                             uint8_t *in_end,
-                                             uint32_t *__restrict out_begin)
+static uint32_t find_non_zero_indices__baseline(uint8_t *__restrict in_begin,
+                                                uint8_t *in_end,
+                                                uint32_t *__restrict out_begin)
 {
     uint32_t *out_current = out_begin;
 
     for (uint8_t *current = in_begin; current != in_end; current++) {
         if (*current != 0) {
             uint32_t index = current - in_begin;
-            *out_current++ = index;
+            *out_current = index;
+            out_current++;
         }
     }
 
@@ -38,11 +39,175 @@ static uint32_t find_non_zero_indices__branch_free(
     uint32_t *out_current = out_begin;
 
     uint32_t amount = in_end - in_begin;
+
     for (uint32_t index = 0; index < amount; index++) {
         *out_current = index;
-        uint8_t value = in_begin[index];
-        bool is_non_zero = value != 0;
+        bool is_non_zero = in_begin[index] != 0;
         out_current += is_non_zero;
+    }
+
+    return out_current - out_begin;
+}
+
+static uint32_t find_non_zero_indices__grouped_branch_free(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
+{
+    assert((in_end - in_begin) % 32 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros = _mm256_set1_epi8(0);
+
+    for (uint8_t *current = in_begin; current != in_end; current += 32) {
+        __m256i group = _mm256_loadu_si256((__m256i *)current);
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        uint32_t is_non_zero_mask = ~is_zero_mask;
+        if (is_non_zero_mask != 0) {
+            uint32_t start_index = current - in_begin;
+            uint32_t end_index = start_index + 32;
+            for (uint32_t index = start_index; index < end_index; index++) {
+                *out_current = index;
+                bool is_non_zero = in_begin[index] != 0;
+                out_current += is_non_zero;
+            }
+        }
+    }
+
+    return out_current - out_begin;
+}
+
+static uint32_t find_non_zero_indices__grouped_branch_free_2(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
+{
+    assert((in_end - in_begin) % 32 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros = _mm256_set1_epi8(0);
+
+    for (uint8_t *current = in_begin; current != in_end; current += 32) {
+        __m256i group = _mm256_loadu_si256((__m256i *)current);
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        uint32_t is_non_zero_mask = ~is_zero_mask;
+        if (is_non_zero_mask != 0) {
+            uint32_t index = current - in_begin;
+            for (uint32_t i = 0; i < 32; i++) {
+                *out_current = index;
+                out_current += is_non_zero_mask & 1;
+                index++;
+                is_non_zero_mask >>= 1;
+            }
+        }
+    }
+
+    return out_current - out_begin;
+}
+
+static uint32_t find_non_zero_indices__mostly_ones(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
+{
+    assert((in_end - in_begin) % 32 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros = _mm256_set1_epi8(0);
+
+    for (uint8_t *current = in_begin; current != in_end; current += 32) {
+        __m256i group = _mm256_loadu_si256((__m256i *)current);
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        if (is_zero_mask != 0xFFFFFFFF) {
+            if (is_zero_mask != 0x00000000) {
+                /* Group has zeros and ones, use branchless algorithm. */
+                uint32_t is_non_zero_mask = ~is_zero_mask;
+                uint32_t index = current - in_begin;
+                for (uint32_t i = 0; i < 32; i++) {
+                    *out_current = index;
+                    out_current += is_non_zero_mask & 1;
+                    index++;
+                    is_non_zero_mask >>= 1;
+                }
+            }
+            else {
+                /* All ones, set output directly. */
+                uint32_t index_start = current - in_begin;
+                for (uint32_t i = 0; i < 32; i++) {
+                    out_current[i] = index_start + i;
+                }
+                out_current += 32;
+            }
+        }
+    }
+
+    return out_current - out_begin;
+}
+
+static uint32_t find_non_zero_indices__counting_bits(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
+{
+    assert((in_end - in_begin) % 32 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros = _mm256_set1_epi8(0);
+
+    for (uint8_t *current = in_begin; current != in_end; current += 32) {
+        __m256i group = _mm256_loadu_si256((__m256i *)current);
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        if (is_zero_mask != 0xFFFFFFFF) {
+            if (is_zero_mask != 0x00000000) {
+                /* Group has zeros and ones. */
+                uint32_t zero_amount = _mm_popcnt_u32(is_zero_mask);
+                uint32_t is_non_zero_mask = ~is_zero_mask;
+                uint32_t index_start = current - in_begin;
+
+                if (zero_amount == 31) {
+                    /* Only a single non-zero. */
+                    unsigned long index_offset;
+                    assert(_BitScanForward(&index_offset, is_non_zero_mask));
+                    *out_current = index_start + index_offset;
+                    out_current++;
+                }
+                else if (zero_amount == 30) {
+                    /* Exactly two non-zeros. */
+                    unsigned long index_offset1, index_offset2;
+                    assert(_BitScanForward(&index_offset1, is_non_zero_mask));
+                    assert(_BitScanReverse(&index_offset2, is_non_zero_mask));
+                    out_current[0] = index_start + index_offset1;
+                    out_current[1] = index_start + index_offset2;
+                    out_current += 2;
+                }
+                else {
+                    /* More than two non-zeros. */
+                    uint32_t index = index_start;
+                    for (uint32_t i = 0; i < 32; i++) {
+                        *out_current = index;
+                        out_current += is_non_zero_mask & 1;
+                        index++;
+                        is_non_zero_mask >>= 1;
+                    }
+                }
+            }
+            else {
+                /* All ones, set output directly. */
+                uint32_t index_start = current - in_begin;
+                for (uint32_t i = 0; i < 32; i++) {
+                    out_current[i] = index_start + i;
+                }
+                out_current += 32;
+            }
+        }
     }
 
     return out_current - out_begin;
@@ -473,17 +638,14 @@ static uint32_t find_non_zero_indices__grouped_32(
 
     uint32_t *out_current = out_begin;
 
-    __m256i zeros;
-    __m256i ones;
-    memset(&zeros, 0x00, sizeof(__m256i));
-    memset(&ones, 0xFF, sizeof(__m256i));
+    __m256i zeros = _mm256_set1_epi8(0);
 
     for (uint8_t *current = in_begin; current != in_end; current += 32) {
         __m256i group = _mm256_loadu_si256((__m256i *)current);
-        __m256i compared = _mm256_cmpeq_epi8(group, zeros);
-        compared = _mm256_andnot_si256(compared, ones);
-        uint32_t mask = _mm256_movemask_epi8(compared);
-        if (mask != 0) {
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        uint32_t is_non_zero_mask = ~is_zero_mask;
+        if (is_non_zero_mask != 0) {
             for (uint32_t i = 0; i < 32; i++) {
                 if (current[i] != 0) {
                     *out_current++ = (current - in_begin) + i;
@@ -603,19 +765,26 @@ int main(int argc, char const *argv[])
                                          5'000'000,
                                          9'000'000,
                                          9'900'000,
-                                         9'990'000,
+                                         9'999'000,
                                          10'000'000};
 
+    // set_amounts = {10};
+
     std::vector<TestFunction> test_functions = {
-        {find_non_zero_indices__naive, "naive"},
-        {find_non_zero_indices__branch_free, "branch free"},
-        {find_non_zero_indices__grouped_2, "grouped 2"},
-        {find_non_zero_indices__grouped_4, "grouped 4"},
-        {find_non_zero_indices__grouped_8, "grouped 8"},
-        {find_non_zero_indices__grouped_32, "grouped 32"},
-        {find_non_zero_indices__optimized, "optimized"},
-        {find_non_zero_indices__optimized2, "optimized 2"},
-        {find_non_zero_indices__optimized3, "optimized 3"},
+        //{find_non_zero_indices__baseline, "Baseline"},
+        //{find_non_zero_indices__grouped_2, "Groups of 2"},
+        //{find_non_zero_indices__grouped_4, "Groups of 4"},
+        //{find_non_zero_indices__grouped_8, "Groups of 8"},
+        //{find_non_zero_indices__grouped_32, "Groups of 32"},
+        // {find_non_zero_indices__branch_free, "Branch Free"},
+        //{find_non_zero_indices__grouped_branch_free, "Grouped Branchless"},
+        {find_non_zero_indices__grouped_branch_free_2, "Grouped Branchless 2"},
+        {find_non_zero_indices__mostly_ones, "Mostly Ones"},
+        {find_non_zero_indices__counting_bits, "Counting Bits"},
+        // {find_non_zero_indices__counting_bits, "Counting Bits"},
+        // {find_non_zero_indices__optimized, "optimized"},
+        // {find_non_zero_indices__optimized2, "optimized 2"},
+        // {find_non_zero_indices__optimized3, "optimized 3"},
     };
 
     for (uint32_t set_amount : set_amounts) {

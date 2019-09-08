@@ -14,10 +14,9 @@
 #include <assert.h>
 #include <fstream>
 
-static void find_indices__naive(uint8_t *__restrict in_begin,
-                                uint8_t *__restrict in_end,
-                                uint32_t *__restrict out_begin,
-                                uint32_t &out_amount)
+static uint32_t find_non_zero_indices__naive(uint8_t *__restrict in_begin,
+                                             uint8_t *in_end,
+                                             uint32_t *__restrict out_begin)
 {
     uint32_t *out_current = out_begin;
 
@@ -28,13 +27,13 @@ static void find_indices__naive(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__branch_free(uint8_t *__restrict in_begin,
-                                      uint8_t *__restrict in_end,
-                                      uint32_t *__restrict out_begin,
-                                      uint32_t &out_amount)
+static uint32_t find_non_zero_indices__branch_free(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     uint32_t *out_current = out_begin;
 
@@ -46,13 +45,13 @@ static void find_indices__branch_free(uint8_t *__restrict in_begin,
         out_current += is_non_zero;
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__grouped_2(uint8_t *__restrict in_begin,
-                                    uint8_t *__restrict in_end,
-                                    uint32_t *__restrict out_begin,
-                                    uint32_t &out_amount)
+static uint32_t find_non_zero_indices__grouped_2(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 2 == 0);
 
@@ -71,13 +70,13 @@ static void find_indices__grouped_2(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__grouped_4(uint8_t *__restrict in_begin,
-                                    uint8_t *__restrict in_end,
-                                    uint32_t *__restrict out_begin,
-                                    uint32_t &out_amount)
+static uint32_t find_non_zero_indices__grouped_4(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 4 == 0);
 
@@ -94,13 +93,13 @@ static void find_indices__grouped_4(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__grouped_8(uint8_t *__restrict in_begin,
-                                    uint8_t *__restrict in_end,
-                                    uint32_t *__restrict out_begin,
-                                    uint32_t &out_amount)
+static uint32_t find_non_zero_indices__grouped_8(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 8 == 0);
 
@@ -117,7 +116,7 @@ static void find_indices__grouped_8(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
 static uint32_t find_lowest_set_bit_index(uint32_t x)
@@ -148,10 +147,10 @@ static uint32_t find_highest_set_bit_index(uint64_t x)
     return index;
 }
 
-static void find_indices__optimized(uint8_t *__restrict in_begin,
-                                    uint8_t *__restrict in_end,
-                                    uint32_t *__restrict out_begin,
-                                    uint32_t &out_amount)
+static uint32_t find_non_zero_indices__optimized(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 32 == 0);
 
@@ -248,13 +247,13 @@ static void find_indices__optimized(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__optimized2(uint8_t *__restrict in_begin,
-                                     uint8_t *__restrict in_end,
-                                     uint32_t *__restrict out_begin,
-                                     uint32_t &out_amount)
+static uint32_t find_non_zero_indices__optimized2(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 64 == 0);
 
@@ -350,13 +349,13 @@ static void find_indices__optimized2(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__optimized3(uint8_t *__restrict in_begin,
-                                     uint8_t *__restrict in_end,
-                                     uint32_t *__restrict out_begin,
-                                     uint32_t &out_amount)
+static uint32_t find_non_zero_indices__optimized3(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 64 == 0);
 
@@ -462,13 +461,13 @@ static void find_indices__optimized3(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-static void find_indices__grouped_32(uint8_t *__restrict in_begin,
-                                     uint8_t *__restrict in_end,
-                                     uint32_t *__restrict out_begin,
-                                     uint32_t &out_amount)
+static uint32_t find_non_zero_indices__grouped_32(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
 {
     assert((in_end - in_begin) % 32 == 0);
 
@@ -493,13 +492,12 @@ static void find_indices__grouped_32(uint8_t *__restrict in_begin,
         }
     }
 
-    out_amount = out_current - out_begin;
+    return out_current - out_begin;
 }
 
-typedef void (*NonZeroFinder)(uint8_t *__restrict in_begin,
-                              uint8_t *__restrict in_end,
-                              uint32_t *__restrict out_begin,
-                              uint32_t &out_amount);
+typedef uint32_t (*NonZeroFinder)(uint8_t *__restrict in_begin,
+                                  uint8_t *in_end,
+                                  uint32_t *__restrict out_begin);
 
 static void print_found(std::vector<uint32_t> &found, uint32_t amount_found)
 {
@@ -534,10 +532,8 @@ static FunctionStats run_test(const char *name,
 
     for (uint32_t iteration = 0; iteration < iteration_count; iteration++) {
         TimePoint start_time = Clock::now();
-        function(array.data(),
-                 array.data() + array.size(),
-                 &found[0],
-                 amount_found);
+        amount_found = function(
+            array.data(), array.data() + array.size(), &found[0]);
         TimePoint end_time = Clock::now();
         Nanoseconds duration = end_time - start_time;
         durations.push_back(duration.count() / 1'000'000.0);
@@ -611,15 +607,15 @@ int main(int argc, char const *argv[])
                                          10'000'000};
 
     std::vector<TestFunction> test_functions = {
-        {find_indices__naive, "naive"},
-        {find_indices__branch_free, "branch free"},
-        {find_indices__grouped_2, "grouped 2"},
-        {find_indices__grouped_4, "grouped 4"},
-        {find_indices__grouped_8, "grouped 8"},
-        {find_indices__grouped_32, "grouped 32"},
-        {find_indices__optimized, "optimized"},
-        {find_indices__optimized2, "optimized 2"},
-        {find_indices__optimized3, "optimized 3"},
+        {find_non_zero_indices__naive, "naive"},
+        {find_non_zero_indices__branch_free, "branch free"},
+        {find_non_zero_indices__grouped_2, "grouped 2"},
+        {find_non_zero_indices__grouped_4, "grouped 4"},
+        {find_non_zero_indices__grouped_8, "grouped 8"},
+        {find_non_zero_indices__grouped_32, "grouped 32"},
+        {find_non_zero_indices__optimized, "optimized"},
+        {find_non_zero_indices__optimized2, "optimized 2"},
+        {find_non_zero_indices__optimized3, "optimized 3"},
     };
 
     for (uint32_t set_amount : set_amounts) {

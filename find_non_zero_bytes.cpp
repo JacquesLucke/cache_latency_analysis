@@ -225,6 +225,80 @@ static uint32_t find_non_zero_indices__counting_bits(
     return out_current - out_begin;
 }
 
+template<uint N>
+static uint32_t find_non_zero_indices__bit_iteration(
+    uint8_t *__restrict in_begin,
+    uint8_t *in_end,
+    uint32_t *__restrict out_begin)
+{
+    assert((in_end - in_begin) % 32 == 0);
+
+    uint32_t *out_current = out_begin;
+
+    __m256i zeros = _mm256_set1_epi8(0);
+
+    for (uint8_t *current = in_begin; current != in_end; current += 32) {
+        __m256i group = _mm256_loadu_si256((__m256i *)current);
+        __m256i is_zero_byte_mask = _mm256_cmpeq_epi8(group, zeros);
+        uint32_t is_zero_mask = _mm256_movemask_epi8(is_zero_byte_mask);
+        if (is_zero_mask != 0xFFFFFFFF) {
+            if (is_zero_mask != 0x00000000) {
+                /* Group has zeros and ones. */
+                uint32_t zero_amount = _mm_popcnt_u32(is_zero_mask);
+                uint32_t is_non_zero_mask = ~is_zero_mask;
+                uint32_t index_start = current - in_begin;
+
+                if (zero_amount == 31) {
+                    /* Only a single non-zero. */
+                    uint32_t index_offset = find_lowest_set_bit_index(
+                        is_non_zero_mask);
+                    *out_current = index_start + index_offset;
+                    out_current++;
+                }
+                else if (zero_amount == 30) {
+                    /* Exactly two non-zeros. */
+                    uint32_t index_offset1 = find_lowest_set_bit_index(
+                        is_non_zero_mask);
+                    uint32_t index_offset2 = find_highest_set_bit_index(
+                        is_non_zero_mask);
+                    out_current[0] = index_start + index_offset1;
+                    out_current[1] = index_start + index_offset2;
+                    out_current += 2;
+                }
+                else if (zero_amount > N) {
+                    for (uint32_t i = 32; i > zero_amount; i--) {
+                        uint index_offset = find_lowest_set_bit_index(
+                            is_non_zero_mask);
+                        *out_current = index_start = index_offset;
+                        out_current++;
+                        is_non_zero_mask &= ~(1 << index_offset);
+                    }
+                }
+                else {
+                    /* More than two non-zeros. */
+                    uint32_t index = index_start;
+                    for (uint32_t i = 0; i < 32; i++) {
+                        *out_current = index;
+                        out_current += is_non_zero_mask & 1;
+                        index++;
+                        is_non_zero_mask >>= 1;
+                    }
+                }
+            }
+            else {
+                /* All ones, set output directly. */
+                uint32_t index_start = current - in_begin;
+                for (uint32_t i = 0; i < 32; i++) {
+                    out_current[i] = index_start + i;
+                }
+                out_current += 32;
+            }
+        }
+    }
+
+    return out_current - out_begin;
+}
+
 static uint32_t find_non_zero_indices__grouped_2(
     uint8_t *__restrict in_begin,
     uint8_t *in_end,
@@ -700,8 +774,8 @@ static FunctionStats run_test(const char *name,
                               NonZeroFinder function,
                               std::vector<uint8_t> &array)
 {
-    const uint32_t iteration_count = 100;
-    const uint32_t cutoff = 20;
+    const uint32_t iteration_count = 10;
+    const uint32_t cutoff = 2;
 
     std::vector<uint32_t> found(array.size());
     uint32_t amount_found = 0;
@@ -783,27 +857,52 @@ int main(int argc, char const *argv[])
                                          9'999'000,
                                          10'000'000};
 
+    set_amounts = {};
+    for (uint32_t i = 0; i <= 10'000'000; i += 200'000) {
+        set_amounts.push_back(i);
+    }
+
     // set_amounts = {10};
 
     std::vector<TestFunction> test_functions = {
-        //{find_non_zero_indices__baseline, "Baseline"},
-        //{find_non_zero_indices__grouped_2, "Groups of 2"},
-        //{find_non_zero_indices__grouped_4, "Groups of 4"},
-        //{find_non_zero_indices__grouped_8, "Groups of 8"},
-        //{find_non_zero_indices__grouped_32, "Groups of 32"},
-        // {find_non_zero_indices__branch_free, "Branch Free"},
-        //{find_non_zero_indices__grouped_branch_free, "Grouped Branchless"},
-        {find_non_zero_indices__grouped_branch_free_2, "Grouped Branchless 2"},
-        {find_non_zero_indices__mostly_ones, "Mostly Ones"},
+        // {find_non_zero_indices__baseline, "Baseline"},
+        // {find_non_zero_indices__grouped_2, "Groups of 2"},
+        // {find_non_zero_indices__grouped_4, "Groups of 4"},
+        // {find_non_zero_indices__grouped_8, "Groups of 8"},
+        // {find_non_zero_indices__grouped_32, "Groups of 32"},
+        {find_non_zero_indices__branch_free, "Branch Free"},
+        {find_non_zero_indices__grouped_branch_free, "Grouped Branchless"},
+        {find_non_zero_indices__grouped_branch_free_2,
+         "Grouped Branchless 2 "},
+        // {find_non_zero_indices__mostly_ones, "Mostly Ones"},
         {find_non_zero_indices__counting_bits, "Counting Bits"},
-        // {find_non_zero_indices__counting_bits, "Counting Bits"},
+        {find_non_zero_indices__bit_iteration<0>, "Bit Iteration 0"},
+        {find_non_zero_indices__bit_iteration<4>, "Bit Iteration 4"},
+        {find_non_zero_indices__bit_iteration<7>, "Bit Iteration 7"},
+        {find_non_zero_indices__bit_iteration<10>, "Bit Iteration 10"},
+        {find_non_zero_indices__bit_iteration<15>, "Bit Iteration 15"},
+        {find_non_zero_indices__bit_iteration<20>, "Bit Iteration 20"},
+        {find_non_zero_indices__bit_iteration<24>, "Bit Iteration 24"},
+        {find_non_zero_indices__bit_iteration<28>, "Bit Iteration 28"},
         // {find_non_zero_indices__optimized, "optimized"},
         // {find_non_zero_indices__optimized2, "optimized 2"},
         // {find_non_zero_indices__optimized3, "optimized 3"},
     };
 
+    std::vector<uint32_t> all_indices(total_amount);
+    for (uint32_t i = 0; i < total_amount; i++) {
+        all_indices[i] = i;
+    }
+    std::random_shuffle(all_indices.begin(), all_indices.end());
+    std::vector<uint8_t> data(total_amount);
+
     for (uint32_t set_amount : set_amounts) {
-        auto array = init_data(total_amount, set_amount);
+
+        std::fill(data.begin(), data.end(), 0);
+        for (uint32_t i = 0; i < set_amount; i++) {
+            data[all_indices[i]] = 1;
+        }
+
         std::cout << "Set Amount: " << set_amount << "\n\n";
 
         for (auto test_function : test_functions) {
@@ -811,7 +910,7 @@ int main(int argc, char const *argv[])
             ss << test_function.name << ';';
 
             auto stats = run_test(
-                test_function.name, test_function.function, array);
+                test_function.name, test_function.function, data);
 
             ss << stats.min_ms << ';' << stats.max_ms << ';'
                << stats.average_ms << '\n';

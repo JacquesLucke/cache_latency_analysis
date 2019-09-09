@@ -13,6 +13,17 @@
 #include <nmmintrin.h>
 #include <assert.h>
 #include <fstream>
+#include <algorithm>
+
+static uint32_t find_lowest_set_bit_index(uint x)
+{
+    return (uint32_t)__builtin_ctz(x);
+}
+
+static uint32_t find_highest_set_bit_index(uint32_t x)
+{
+    return (uint32_t)__builtin_clz(x);
+}
 
 static uint32_t find_non_zero_indices__baseline(uint8_t *__restrict in_begin,
                                                 uint8_t *in_end,
@@ -174,16 +185,17 @@ static uint32_t find_non_zero_indices__counting_bits(
 
                 if (zero_amount == 31) {
                     /* Only a single non-zero. */
-                    unsigned long index_offset;
-                    assert(_BitScanForward(&index_offset, is_non_zero_mask));
+                    uint32_t index_offset = find_lowest_set_bit_index(
+                        is_non_zero_mask);
                     *out_current = index_start + index_offset;
                     out_current++;
                 }
                 else if (zero_amount == 30) {
                     /* Exactly two non-zeros. */
-                    unsigned long index_offset1, index_offset2;
-                    assert(_BitScanForward(&index_offset1, is_non_zero_mask));
-                    assert(_BitScanReverse(&index_offset2, is_non_zero_mask));
+                    uint32_t index_offset1 = find_lowest_set_bit_index(
+                        is_non_zero_mask);
+                    uint32_t index_offset2 = find_highest_set_bit_index(
+                        is_non_zero_mask);
                     out_current[0] = index_start + index_offset1;
                     out_current[1] = index_start + index_offset2;
                     out_current += 2;
@@ -284,350 +296,353 @@ static uint32_t find_non_zero_indices__grouped_8(
     return out_current - out_begin;
 }
 
-static uint32_t find_lowest_set_bit_index(uint32_t x)
-{
-    unsigned long index;
-    assert(_BitScanForward(&index, x));
-    return index;
-}
+// static uint32_t find_lowest_set_bit_index(uint32_t x)
+// {
+//     unsigned long index;
+//     assert(_BitScanForward(&index, x));
+//     return index;
+// }
 
-static uint32_t find_highest_set_bit_index(uint32_t x)
-{
-    unsigned long index;
-    assert(_BitScanReverse(&index, x));
-    return index;
-}
+// static uint32_t find_highest_set_bit_index(uint32_t x)
+// {
+//     unsigned long index;
+//     assert(_BitScanReverse(&index, x));
+//     return index;
+// }
 
-static uint32_t find_lowest_set_bit_index(uint64_t x)
-{
-    unsigned long index;
-    assert(_BitScanForward64(&index, x));
-    return index;
-}
+// static uint32_t find_lowest_set_bit_index(uint64_t x)
+// {
+//     unsigned long index;
+//     assert(_BitScanForward64(&index, x));
+//     return index;
+// }
 
-static uint32_t find_highest_set_bit_index(uint64_t x)
-{
-    unsigned long index;
-    assert(_BitScanReverse64(&index, x));
-    return index;
-}
+// static uint32_t find_highest_set_bit_index(uint64_t x)
+// {
+//     unsigned long index;
+//     assert(_BitScanReverse64(&index, x));
+//     return index;
+// }
 
-static uint32_t find_non_zero_indices__optimized(
-    uint8_t *__restrict in_begin,
-    uint8_t *in_end,
-    uint32_t *__restrict out_begin)
-{
-    assert((in_end - in_begin) % 32 == 0);
+// static uint32_t find_non_zero_indices__optimized(
+//     uint8_t *__restrict in_begin,
+//     uint8_t *in_end,
+//     uint32_t *__restrict out_begin)
+// {
+//     assert((in_end - in_begin) % 32 == 0);
 
-    uint32_t *out_current = out_begin;
+//     uint32_t *out_current = out_begin;
 
-    __m256i zeros;
-    __m256i ones;
-    memset(&zeros, 0x00, sizeof(__m256i));
-    memset(&ones, 0xFF, sizeof(__m256i));
+//     __m256i zeros;
+//     __m256i ones;
+//     memset(&zeros, 0x00, sizeof(__m256i));
+//     memset(&ones, 0xFF, sizeof(__m256i));
 
-    for (uint8_t *current = in_begin; current != in_end; current += 32) {
-        __m256i group = _mm256_loadu_si256((__m256i *)current);
-        __m256i compared = _mm256_cmpeq_epi8(group, zeros);
-        compared = _mm256_andnot_si256(compared, ones);
-        uint32_t mask = _mm256_movemask_epi8(compared);
-        if (mask != 0) {
-            uint32_t set_bits = _mm_popcnt_u32(mask);
-            uint32_t index_offset = current - in_begin;
-            switch (set_bits) {
-                case 1: {
-                    uint32_t index = find_lowest_set_bit_index(mask);
-                    *out_current = index_offset + index;
-                    out_current++;
-                    break;
-                }
-                case 2: {
-                    uint32_t index1 = find_lowest_set_bit_index(mask);
-                    uint32_t index2 = find_highest_set_bit_index(mask);
-                    *out_current = index_offset + index1;
-                    *(out_current + 1) = index_offset + index2;
-                    out_current += 2;
-                    break;
-                }
-                case 3:
-                case 4:
-                case 5:
-                case 6:
-                case 7:
-                case 8:
-                case 9:
-                case 10:
-                case 11:
-                case 12:
-                case 13:
-                case 14:
-                case 15:
-                case 16:
-                case 17:
-                case 18:
-                case 19:
-                case 20:
-                case 21:
-                case 22:
-                case 23:
-                case 24:
-                case 25:
-                case 26:
-                case 27:
-                case 28:
-                case 29:
-                case 30:
-                case 31: {
-                    uint32_t index_end = index_offset + 32;
-                    for (uint32_t index = index_offset; index < index_end;
-                         index++) {
-                        *out_current = index;
-                        bool is_non_zero = in_begin[index] != 0;
-                        out_current += is_non_zero;
-                    }
-                    break;
-                }
-                case 32: {
-                    __m256i index_offset_256 = _mm256_set1_epi32(index_offset);
-                    __m256i part1 = _mm256_add_epi32(
-                        index_offset_256,
-                        _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
-                    __m256i part2 = _mm256_add_epi32(
-                        index_offset_256,
-                        _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
-                    __m256i part3 = _mm256_add_epi32(
-                        index_offset_256,
-                        _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
-                    __m256i part4 = _mm256_add_epi32(
-                        index_offset_256,
-                        _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
-                    _mm256_store_si256((__m256i *)out_current, part1);
-                    _mm256_store_si256((__m256i *)out_current + 1, part2);
-                    _mm256_store_si256((__m256i *)out_current + 2, part3);
-                    _mm256_store_si256((__m256i *)out_current + 3, part4);
-                    out_current += 32;
-                    break;
-                }
-            }
-        }
-    }
+//     for (uint8_t *current = in_begin; current != in_end; current += 32) {
+//         __m256i group = _mm256_loadu_si256((__m256i *)current);
+//         __m256i compared = _mm256_cmpeq_epi8(group, zeros);
+//         compared = _mm256_andnot_si256(compared, ones);
+//         uint32_t mask = _mm256_movemask_epi8(compared);
+//         if (mask != 0) {
+//             uint32_t set_bits = _mm_popcnt_u32(mask);
+//             uint32_t index_offset = current - in_begin;
+//             switch (set_bits) {
+//                 case 1: {
+//                     uint32_t index = find_lowest_set_bit_index(mask);
+//                     *out_current = index_offset + index;
+//                     out_current++;
+//                     break;
+//                 }
+//                 case 2: {
+//                     uint32_t index1 = find_lowest_set_bit_index(mask);
+//                     uint32_t index2 = find_highest_set_bit_index(mask);
+//                     *out_current = index_offset + index1;
+//                     *(out_current + 1) = index_offset + index2;
+//                     out_current += 2;
+//                     break;
+//                 }
+//                 case 3:
+//                 case 4:
+//                 case 5:
+//                 case 6:
+//                 case 7:
+//                 case 8:
+//                 case 9:
+//                 case 10:
+//                 case 11:
+//                 case 12:
+//                 case 13:
+//                 case 14:
+//                 case 15:
+//                 case 16:
+//                 case 17:
+//                 case 18:
+//                 case 19:
+//                 case 20:
+//                 case 21:
+//                 case 22:
+//                 case 23:
+//                 case 24:
+//                 case 25:
+//                 case 26:
+//                 case 27:
+//                 case 28:
+//                 case 29:
+//                 case 30:
+//                 case 31: {
+//                     uint32_t index_end = index_offset + 32;
+//                     for (uint32_t index = index_offset; index < index_end;
+//                          index++) {
+//                         *out_current = index;
+//                         bool is_non_zero = in_begin[index] != 0;
+//                         out_current += is_non_zero;
+//                     }
+//                     break;
+//                 }
+//                 case 32: {
+//                     __m256i index_offset_256 =
+//                     _mm256_set1_epi32(index_offset);
+//                     __m256i part1 = _mm256_add_epi32(
+//                         index_offset_256,
+//                         _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
+//                     __m256i part2 = _mm256_add_epi32(
+//                         index_offset_256,
+//                         _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
+//                     __m256i part3 = _mm256_add_epi32(
+//                         index_offset_256,
+//                         _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
+//                     __m256i part4 = _mm256_add_epi32(
+//                         index_offset_256,
+//                         _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
+//                     _mm256_store_si256((__m256i *)out_current, part1);
+//                     _mm256_store_si256((__m256i *)out_current + 1, part2);
+//                     _mm256_store_si256((__m256i *)out_current + 2, part3);
+//                     _mm256_store_si256((__m256i *)out_current + 3, part4);
+//                     out_current += 32;
+//                     break;
+//                 }
+//             }
+//         }
+//     }
 
-    return out_current - out_begin;
-}
+//     return out_current - out_begin;
+// }
 
-static uint32_t find_non_zero_indices__optimized2(
-    uint8_t *__restrict in_begin,
-    uint8_t *in_end,
-    uint32_t *__restrict out_begin)
-{
-    assert((in_end - in_begin) % 64 == 0);
+// static uint32_t find_non_zero_indices__optimized2(
+//     uint8_t *__restrict in_begin,
+//     uint8_t *in_end,
+//     uint32_t *__restrict out_begin)
+// {
+//     assert((in_end - in_begin) % 64 == 0);
 
-    uint32_t *out_current = out_begin;
+//     uint32_t *out_current = out_begin;
 
-    __m256i zeros;
-    memset(&zeros, 0x00, sizeof(__m256i));
+//     __m256i zeros;
+//     memset(&zeros, 0x00, sizeof(__m256i));
 
-    for (uint8_t *current = in_begin; current != in_end; current += 64) {
-        __m256i group1 = _mm256_loadu_si256((__m256i *)current);
-        __m256i group2 = _mm256_loadu_si256((__m256i *)current + 1);
-        __m256i compared1 = _mm256_cmpeq_epi8(group1, zeros);
-        __m256i compared2 = _mm256_cmpeq_epi8(group2, zeros);
-        uint32_t inverted_mask1 = _mm256_movemask_epi8(compared1);
-        uint32_t inverted_mask2 = _mm256_movemask_epi8(compared2);
-        uint64_t inverted_mask = ((uint64_t)inverted_mask2 << (uint64_t)32) |
-                                 inverted_mask1;
-        uint64_t mask = ~inverted_mask;
-        if (mask != 0) {
-            uint32_t set_bits = _mm_popcnt_u64(mask);
-            uint32_t start_index = current - in_begin;
+//     for (uint8_t *current = in_begin; current != in_end; current += 64) {
+//         __m256i group1 = _mm256_loadu_si256((__m256i *)current);
+//         __m256i group2 = _mm256_loadu_si256((__m256i *)current + 1);
+//         __m256i compared1 = _mm256_cmpeq_epi8(group1, zeros);
+//         __m256i compared2 = _mm256_cmpeq_epi8(group2, zeros);
+//         uint32_t inverted_mask1 = _mm256_movemask_epi8(compared1);
+//         uint32_t inverted_mask2 = _mm256_movemask_epi8(compared2);
+//         uint64_t inverted_mask = ((uint64_t)inverted_mask2 << (uint64_t)32)
+//         |
+//                                  inverted_mask1;
+//         uint64_t mask = ~inverted_mask;
+//         if (mask != 0) {
+//             uint32_t set_bits = _mm_popcnt_u64(mask);
+//             uint32_t start_index = current - in_begin;
 
-            if (set_bits < 16) {
-                if (set_bits == 1) {
-                    uint32_t index = find_lowest_set_bit_index(mask);
-                    *out_current = start_index + index;
-                    out_current++;
-                }
-                else if (set_bits == 2) {
-                    uint32_t index1 = find_lowest_set_bit_index(mask);
-                    uint32_t index2 = find_highest_set_bit_index(mask);
-                    *out_current = start_index + index1;
-                    *(out_current + 1) = start_index + index2;
-                    out_current += 2;
-                }
-                else {
-                    unsigned long index_offset;
-                    while (_BitScanForward64(&index_offset, mask)) {
-                        *out_current = start_index + index_offset;
-                        out_current++;
-                        mask &= ~((uint64_t)1 << index_offset);
-                    }
-                }
-            }
-            else if (set_bits < 64) {
-                uint32_t index = start_index;
-                while (mask) {
-                    *out_current = index;
-                    out_current += mask & 1;
-                    index++;
-                    mask >>= 1;
-                }
-            }
-            else {
-                __m256i index_offset_256 = _mm256_set1_epi32(start_index);
+//             if (set_bits < 16) {
+//                 if (set_bits == 1) {
+//                     uint32_t index = find_lowest_set_bit_index(mask);
+//                     *out_current = start_index + index;
+//                     out_current++;
+//                 }
+//                 else if (set_bits == 2) {
+//                     uint32_t index1 = find_lowest_set_bit_index(mask);
+//                     uint32_t index2 = find_highest_set_bit_index(mask);
+//                     *out_current = start_index + index1;
+//                     *(out_current + 1) = start_index + index2;
+//                     out_current += 2;
+//                 }
+//                 else {
+//                     unsigned long index_offset;
+//                     while (_BitScanForward64(&index_offset, mask)) {
+//                         *out_current = start_index + index_offset;
+//                         out_current++;
+//                         mask &= ~((uint64_t)1 << index_offset);
+//                     }
+//                 }
+//             }
+//             else if (set_bits < 64) {
+//                 uint32_t index = start_index;
+//                 while (mask) {
+//                     *out_current = index;
+//                     out_current += mask & 1;
+//                     index++;
+//                     mask >>= 1;
+//                 }
+//             }
+//             else {
+//                 __m256i index_offset_256 = _mm256_set1_epi32(start_index);
 
-                __m256i part1 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
-                __m256i part2 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
-                __m256i part3 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
-                __m256i part4 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
+//                 __m256i part1 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
+//                 __m256i part2 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
+//                 __m256i part3 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
+//                 __m256i part4 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
 
-                __m256i part5 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(39, 38, 37, 36, 35, 34, 33, 32));
-                __m256i part6 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(47, 46, 45, 44, 43, 42, 41, 40));
-                __m256i part7 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(55, 54, 53, 52, 51, 50, 49, 48));
-                __m256i part8 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(63, 62, 61, 60, 59, 58, 57, 56));
+//                 __m256i part5 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(39, 38, 37, 36, 35, 34, 33, 32));
+//                 __m256i part6 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(47, 46, 45, 44, 43, 42, 41, 40));
+//                 __m256i part7 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(55, 54, 53, 52, 51, 50, 49, 48));
+//                 __m256i part8 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(63, 62, 61, 60, 59, 58, 57, 56));
 
-                _mm256_store_si256((__m256i *)out_current, part1);
-                _mm256_store_si256((__m256i *)out_current + 1, part2);
-                _mm256_store_si256((__m256i *)out_current + 2, part3);
-                _mm256_store_si256((__m256i *)out_current + 3, part4);
-                _mm256_store_si256((__m256i *)out_current + 4, part5);
-                _mm256_store_si256((__m256i *)out_current + 5, part6);
-                _mm256_store_si256((__m256i *)out_current + 6, part7);
-                _mm256_store_si256((__m256i *)out_current + 7, part8);
-                out_current += 64;
-            }
-        }
-    }
+//                 _mm256_store_si256((__m256i *)out_current, part1);
+//                 _mm256_store_si256((__m256i *)out_current + 1, part2);
+//                 _mm256_store_si256((__m256i *)out_current + 2, part3);
+//                 _mm256_store_si256((__m256i *)out_current + 3, part4);
+//                 _mm256_store_si256((__m256i *)out_current + 4, part5);
+//                 _mm256_store_si256((__m256i *)out_current + 5, part6);
+//                 _mm256_store_si256((__m256i *)out_current + 6, part7);
+//                 _mm256_store_si256((__m256i *)out_current + 7, part8);
+//                 out_current += 64;
+//             }
+//         }
+//     }
 
-    return out_current - out_begin;
-}
+//     return out_current - out_begin;
+// }
 
-static uint32_t find_non_zero_indices__optimized3(
-    uint8_t *__restrict in_begin,
-    uint8_t *in_end,
-    uint32_t *__restrict out_begin)
-{
-    assert((in_end - in_begin) % 64 == 0);
+// static uint32_t find_non_zero_indices__optimized3(
+//     uint8_t *__restrict in_begin,
+//     uint8_t *in_end,
+//     uint32_t *__restrict out_begin)
+// {
+//     assert((in_end - in_begin) % 64 == 0);
 
-    uint32_t *out_current = out_begin;
+//     uint32_t *out_current = out_begin;
 
-    __m256i zeros;
-    memset(&zeros, 0x00, sizeof(__m256i));
+//     __m256i zeros;
+//     memset(&zeros, 0x00, sizeof(__m256i));
 
-    for (uint8_t *current = in_begin; current != in_end; current += 64) {
-        __m256i group1 = _mm256_loadu_si256((__m256i *)current);
-        __m256i group2 = _mm256_loadu_si256((__m256i *)current + 1);
-        __m256i compared1 = _mm256_cmpeq_epi8(group1, zeros);
-        __m256i compared2 = _mm256_cmpeq_epi8(group2, zeros);
-        uint32_t inverted_mask1 = _mm256_movemask_epi8(compared1);
-        uint32_t inverted_mask2 = _mm256_movemask_epi8(compared2);
-        uint64_t inverted_mask = ((uint64_t)inverted_mask2 << (uint64_t)32) |
-                                 inverted_mask1;
-        uint64_t mask = ~inverted_mask;
-        if (mask != 0) {
-            uint32_t set_bits = _mm_popcnt_u64(mask);
-            uint32_t start_index = current - in_begin;
+//     for (uint8_t *current = in_begin; current != in_end; current += 64) {
+//         __m256i group1 = _mm256_loadu_si256((__m256i *)current);
+//         __m256i group2 = _mm256_loadu_si256((__m256i *)current + 1);
+//         __m256i compared1 = _mm256_cmpeq_epi8(group1, zeros);
+//         __m256i compared2 = _mm256_cmpeq_epi8(group2, zeros);
+//         uint32_t inverted_mask1 = _mm256_movemask_epi8(compared1);
+//         uint32_t inverted_mask2 = _mm256_movemask_epi8(compared2);
+//         uint64_t inverted_mask = ((uint64_t)inverted_mask2 << (uint64_t)32)
+//         |
+//                                  inverted_mask1;
+//         uint64_t mask = ~inverted_mask;
+//         if (mask != 0) {
+//             uint32_t set_bits = _mm_popcnt_u64(mask);
+//             uint32_t start_index = current - in_begin;
 
-            if (set_bits < 16) {
-                if (set_bits == 1) {
-                    uint32_t index = find_lowest_set_bit_index(mask);
-                    *out_current = start_index + index;
-                    out_current++;
-                }
-                else if (set_bits == 2) {
-                    uint32_t index1 = find_lowest_set_bit_index(mask);
-                    uint32_t index2 = find_highest_set_bit_index(mask);
-                    *out_current = start_index + index1;
-                    *(out_current + 1) = start_index + index2;
-                    out_current += 2;
-                }
-                else {
-                    unsigned long index_offset;
-                    while (_BitScanForward64(&index_offset, mask)) {
-                        *out_current = start_index + index_offset;
-                        out_current++;
-                        mask &= ~((uint64_t)1 << index_offset);
-                    }
-                }
-            }
-            else if (set_bits < 64) {
-                uint32_t index = start_index;
-                while (mask) {
-                    *out_current = index;
-                    out_current += mask & 1;
+//             if (set_bits < 16) {
+//                 if (set_bits == 1) {
+//                     uint32_t index = find_lowest_set_bit_index(mask);
+//                     *out_current = start_index + index;
+//                     out_current++;
+//                 }
+//                 else if (set_bits == 2) {
+//                     uint32_t index1 = find_lowest_set_bit_index(mask);
+//                     uint32_t index2 = find_highest_set_bit_index(mask);
+//                     *out_current = start_index + index1;
+//                     *(out_current + 1) = start_index + index2;
+//                     out_current += 2;
+//                 }
+//                 else {
+//                     unsigned long index_offset;
+//                     while (_BitScanForward64(&index_offset, mask)) {
+//                         *out_current = start_index + index_offset;
+//                         out_current++;
+//                         mask &= ~((uint64_t)1 << index_offset);
+//                     }
+//                 }
+//             }
+//             else if (set_bits < 64) {
+//                 uint32_t index = start_index;
+//                 while (mask) {
+//                     *out_current = index;
+//                     out_current += mask & 1;
 
-                    *out_current = index + 1;
-                    out_current += (mask & 2) >> 1;
+//                     *out_current = index + 1;
+//                     out_current += (mask & 2) >> 1;
 
-                    *out_current = index + 2;
-                    out_current += (mask & 4) >> 2;
+//                     *out_current = index + 2;
+//                     out_current += (mask & 4) >> 2;
 
-                    *out_current = index + 3;
-                    out_current += (mask & 8) >> 3;
+//                     *out_current = index + 3;
+//                     out_current += (mask & 8) >> 3;
 
-                    index += 4;
-                    mask >>= 4;
-                }
-            }
-            else {
-                __m256i index_offset_256 = _mm256_set1_epi32(start_index);
+//                     index += 4;
+//                     mask >>= 4;
+//                 }
+//             }
+//             else {
+//                 __m256i index_offset_256 = _mm256_set1_epi32(start_index);
 
-                __m256i part1 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
-                __m256i part2 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
-                __m256i part3 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
-                __m256i part4 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
+//                 __m256i part1 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
+//                 __m256i part2 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8));
+//                 __m256i part3 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16));
+//                 __m256i part4 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24));
 
-                __m256i part5 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(39, 38, 37, 36, 35, 34, 33, 32));
-                __m256i part6 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(47, 46, 45, 44, 43, 42, 41, 40));
-                __m256i part7 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(55, 54, 53, 52, 51, 50, 49, 48));
-                __m256i part8 = _mm256_add_epi32(
-                    index_offset_256,
-                    _mm256_set_epi32(63, 62, 61, 60, 59, 58, 57, 56));
+//                 __m256i part5 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(39, 38, 37, 36, 35, 34, 33, 32));
+//                 __m256i part6 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(47, 46, 45, 44, 43, 42, 41, 40));
+//                 __m256i part7 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(55, 54, 53, 52, 51, 50, 49, 48));
+//                 __m256i part8 = _mm256_add_epi32(
+//                     index_offset_256,
+//                     _mm256_set_epi32(63, 62, 61, 60, 59, 58, 57, 56));
 
-                _mm256_store_si256((__m256i *)out_current, part1);
-                _mm256_store_si256((__m256i *)out_current + 1, part2);
-                _mm256_store_si256((__m256i *)out_current + 2, part3);
-                _mm256_store_si256((__m256i *)out_current + 3, part4);
-                _mm256_store_si256((__m256i *)out_current + 4, part5);
-                _mm256_store_si256((__m256i *)out_current + 5, part6);
-                _mm256_store_si256((__m256i *)out_current + 6, part7);
-                _mm256_store_si256((__m256i *)out_current + 7, part8);
-                out_current += 64;
-            }
-        }
-    }
+//                 _mm256_store_si256((__m256i *)out_current, part1);
+//                 _mm256_store_si256((__m256i *)out_current + 1, part2);
+//                 _mm256_store_si256((__m256i *)out_current + 2, part3);
+//                 _mm256_store_si256((__m256i *)out_current + 3, part4);
+//                 _mm256_store_si256((__m256i *)out_current + 4, part5);
+//                 _mm256_store_si256((__m256i *)out_current + 5, part6);
+//                 _mm256_store_si256((__m256i *)out_current + 6, part7);
+//                 _mm256_store_si256((__m256i *)out_current + 7, part8);
+//                 out_current += 64;
+//             }
+//         }
+//     }
 
-    return out_current - out_begin;
-}
+//     return out_current - out_begin;
+// }
 
 static uint32_t find_non_zero_indices__grouped_32(
     uint8_t *__restrict in_begin,
@@ -805,7 +820,7 @@ int main(int argc, char const *argv[])
         std::cout << "\n\n";
     }
 
-    std::ofstream file("C:\\Users\\jacques\\Documents\\benchmark_results.csv");
+    std::ofstream file("benchmark_results.csv");
     file << ss.str();
     file.close();
 

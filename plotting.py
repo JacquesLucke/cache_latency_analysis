@@ -1,4 +1,4 @@
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 import plotly.express as px
 from collections import defaultdict
 
@@ -32,7 +32,9 @@ fig.update_layout(
     xaxis_tickformat=",.",
     legend_orientation="h",
     legend_x=0,
-    legend_y=1.2,
-    margin_t=0)
-fig.write_image("/home/jacques/Documents/performance_tests/counting_bits.png", width=800, height=350)
+    legend_y=1.15,
+    margin_t=0,
+    showlegend=True)
+fig.update_yaxes(range=[0, 7], dtick=1)
+fig.write_image("/home/jacques/Documents/performance_tests/bit_iteration.png", width=800, height=350)
 fig.show()

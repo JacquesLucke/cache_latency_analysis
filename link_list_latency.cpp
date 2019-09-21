@@ -17,16 +17,11 @@ using Clock = std::chrono::high_resolution_clock;
 using TimePoint = Clock::time_point;
 using Nanoseconds = std::chrono::nanoseconds;
 
-#pragma optimize("", off)
-
 uint do_not_optimize_value = 0;
-
 template<class T> void do_not_optimize_away(T &&datum)
 {
     do_not_optimize_value += (int)&datum;
 }
-
-#pragma optimize("", on)
 
 __declspec(noinline) double measure_time_per_load(ListItem *begin)
 {
@@ -40,17 +35,8 @@ __declspec(noinline) double measure_time_per_load(ListItem *begin)
     TimePoint start = Clock::now();
 
     for (uint i = 0; i < loop_iterations; i++) {
-        current = current->next;
-        current = current->next;
-        current = current->next;
-        current = current->next;
-        current = current->next;
-
-        current = current->next;
-        current = current->next;
-        current = current->next;
-        current = current->next;
-        current = current->next;
+        current = current->next->next->next->next->next->next->next->next->next
+                      ->next;
     }
 
     TimePoint end = Clock::now();
@@ -69,7 +55,7 @@ double measure_time(std::vector<ListItem *> &randomized_items, uint amount)
     }
 
     double duration_sum = 0;
-    uint iterations = 20;
+    uint iterations = 100;
     for (uint i = 0; i < iterations; i++) {
         duration_sum += measure_time_per_load(randomized_items[0]);
     }

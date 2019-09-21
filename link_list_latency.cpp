@@ -25,7 +25,7 @@ template<class T> void do_not_optimize_away(T &&datum)
     do_not_optimize_value += (int)&datum;
 }
 
-__declspec(noinline) double measure_time_per_load(ListItem *begin)
+double measure_time_per_load(ListItem *begin)
 {
     static volatile ListItem *s_final;
 

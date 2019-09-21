@@ -5,12 +5,14 @@
 #include <chrono>
 #include <sstream>
 #include <fstream>
+#include <xmmintrin.h>
 
 using uint = unsigned int;
 
 struct ListItem {
     ListItem *next = nullptr;
-    char pad[64 - sizeof(ListItem *)];
+    ListItem *prefetch = nullptr;
+    char pad[64 - 2 * sizeof(ListItem *)];
 };
 
 using Clock = std::chrono::high_resolution_clock;
@@ -35,8 +37,10 @@ __declspec(noinline) double measure_time_per_load(ListItem *begin)
     TimePoint start = Clock::now();
 
     for (uint i = 0; i < loop_iterations; i++) {
-        current = current->next->next->next->next->next->next->next->next->next
-                      ->next;
+        for (uint j = 0; j < 10; j++) {
+            current = current->next;
+            _mm_prefetch((char *)current->prefetch, 0);
+        }
     }
 
     TimePoint end = Clock::now();
@@ -48,14 +52,18 @@ __declspec(noinline) double measure_time_per_load(ListItem *begin)
     return ns_per_load;
 }
 
-double measure_time(std::vector<ListItem *> &randomized_items, uint amount)
+double measure_time(std::vector<ListItem *> &randomized_items,
+                    uint amount,
+                    uint prefetch_distance)
 {
     for (uint i = 0; i < amount; i++) {
         randomized_items[i]->next = randomized_items[(i + 1) % amount];
+        randomized_items[i]->prefetch =
+            randomized_items[(i + prefetch_distance) % amount];
     }
 
     double duration_sum = 0;
-    uint iterations = 100;
+    uint iterations = 20;
     for (uint i = 0; i < iterations; i++) {
         duration_sum += measure_time_per_load(randomized_items[0]);
     }
@@ -80,11 +88,15 @@ int main(int argc, char const *argv[])
                  std::default_random_engine());
 
     std::stringstream output_stream;
-    for (uint i = 10; i < 1'000'000; i *= 1.2) {
-        double time = measure_time(all_list_items, i);
-        output_stream << "Measurement"
-                      << ";" << i << ";" << time << '\n';
-        std::cout << i << ": \t" << time << " ns\n";
+    for (uint prefetch_distance = 0; prefetch_distance < 20;
+         prefetch_distance += 1) {
+        for (uint i = 10; i < 1'000'000; i *= 1.5) {
+            double time = measure_time(all_list_items, i, prefetch_distance);
+            output_stream << "Prefetch " << prefetch_distance << ";" << i
+                          << ";" << time << '\n';
+            std::cout << "Prefetch " << prefetch_distance << " - " << i
+                      << ": \t" << time << " ns\n";
+        }
     }
 
     std::ofstream file(

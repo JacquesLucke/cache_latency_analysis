@@ -90,7 +90,7 @@ int main(int argc, char const *argv[])
     std::stringstream output_stream;
     for (uint prefetch_distance = 0; prefetch_distance < 20;
          prefetch_distance += 1) {
-        for (uint i = 10; i < 1'000'000; i *= 1.5) {
+        for (uint i = 10; i < 1'000'000; i *= 1.3) {
             double time = measure_time(all_list_items, i, prefetch_distance);
             output_stream << "Prefetch " << prefetch_distance << ";" << i
                           << ";" << time << '\n';
